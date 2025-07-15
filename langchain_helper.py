@@ -24,7 +24,7 @@ if not api_key:
     raise ValueError("GOOGLE_API_KEY not found in environment variables")
 
 # --- LLM and Embeddings Initialization ---
-llm = GoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.7, google_api_key=api_key)
+llm = GoogleGenerativeAI(model="gemini-2.0-flash", temperature=0.7, google_api_key=api_key)
 embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
 
 # --- Financial Product Manager ---

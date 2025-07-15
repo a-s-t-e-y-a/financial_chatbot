@@ -136,12 +136,17 @@ def handle_chat_interface():
 
         # Handle quick query from sidebar
         user_input = None
-        if hasattr(st.session_state, 'quick_query'):
+        if 'quick_query' in st.session_state and st.session_state.quick_query:
             user_input = st.session_state.quick_query
-            delattr(st.session_state, 'quick_query')
-        else:
-            user_input = st.chat_input("Ask me about financial products, investments, or any financial advice...")
+            # Clear the quick_query from state to prevent re-triggering
+            st.session_state.quick_query = None
         
+        # Always display the chat input. It will be None unless the user types something.
+        chat_input = st.chat_input("Ask me about financial products, investments, or any financial advice...")
+        
+        if chat_input:
+            user_input = chat_input
+
         if user_input:
             # Display user message immediately
             with st.chat_message("user"):
@@ -170,6 +175,10 @@ def handle_chat_interface():
 
             # Add bot response to database
             database.add_message_to_session(st.session_state.current_session_id, "assistant", full_response)
+
+            # If a quick query was processed, rerun to clear the input and show a fresh state
+            if chat_input is None:
+                st.rerun()
     else:
         st.info("Create a new chat session or load an old one to start chatting.")
         

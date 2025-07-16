@@ -23,16 +23,45 @@ print(api_key)
 if not api_key:
     raise ValueError("GOOGLE_API_KEY not found in environment variables")
 
-# --- LLM and Embeddings Initialization ---
-llm = GoogleGenerativeAI(model="gemini-2.0-flash", temperature=0.7, google_api_key=api_key)
-embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
+# --- LLM and Embeddings Initialization (Lazy) ---
+llm = None
+embeddings = None
+financial_manager = None
 
-# --- Financial Product Manager ---
-financial_manager = FinancialProductManager(
-    data_directory="data",
-    use_cloudflare=False,  # Set to True when Cloudflare credentials are available
-    embedding_function=lambda text: embeddings.embed_query(text)
-)
+def get_llm():
+    """Lazy initialization of LLM"""
+    global llm
+    if llm is None:
+        llm = GoogleGenerativeAI(model="gemini-2.0-flash", temperature=0.7, google_api_key=api_key)
+    return llm
+
+def get_embeddings():
+    """Lazy initialization of embeddings"""
+    global embeddings
+    if embeddings is None:
+        import asyncio
+        # Try to get existing event loop, create one if none exists
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            # No event loop in current thread, create a new one
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
+        embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
+    return embeddings
+
+def get_financial_manager():
+    """Lazy initialization of financial manager"""
+    global financial_manager
+    if financial_manager is None:
+        embedding_func = lambda text: get_embeddings().embed_query(text)
+        financial_manager = FinancialProductManager(
+            data_directory="data",
+            use_cloudflare=False,  # Set to True when Cloudflare credentials are available
+            embedding_function=embedding_func
+        )
+    return financial_manager
 
 # --- Prompt Template ---
 # Generate a summary of available product categories
@@ -83,17 +112,17 @@ def get_conversation_chain(session_id: int) -> ConversationChain:
 
     if os.path.exists(index_path):
         # Load existing index from disk
-        vectorstore = FAISS.load_local(index_path, embeddings, allow_dangerous_deserialization=True)
+        vectorstore = FAISS.load_local(index_path, get_embeddings(), allow_dangerous_deserialization=True)
     else:
         # Create a new index if it doesn't exist
-        vectorstore = FAISS.from_texts(["This is the start of the conversation."], embedding=embeddings)
+        vectorstore = FAISS.from_texts(["This is the start of the conversation."], embedding=get_embeddings())
         vectorstore.save_local(index_path)
 
     retriever = vectorstore.as_retriever(search_kwargs=dict(k=3))
     memory = VectorStoreRetrieverMemory(retriever=retriever)
     
     chain = ConversationChain(
-        llm=llm,
+        llm=get_llm(),
         prompt=PROMPT,
         memory=memory,
         verbose=True
@@ -305,7 +334,7 @@ def get_financial_recommendations(input_text: str, user_preferences: dict = None
             categories = list(ProductCategory)
         
         # Get recommendations
-        recommendations = financial_manager.recommend_products(
+        recommendations = get_financial_manager().recommend_products(
             user_query=input_text,
             product_categories=categories,
             user_preferences=user_preferences or {},
@@ -352,7 +381,7 @@ def initialize_financial_system() -> bool:
     """
     try:
         print("Initializing financial advisory system...")
-        success = financial_manager.initialize_vector_store()
+        success = get_financial_manager().initialize_vector_store()
         if success:
             print("Financial advisory system initialized successfully")
         else:
